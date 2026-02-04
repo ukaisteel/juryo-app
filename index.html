@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>重量計算（スマホ特化）</title>
+<style>
+  :root{
+    --bd:#2b2b2b;
+    --muted:#666;
+    --bg:#fff;
+    --card:#f6f6f6;
+    --radius:14px;
+  }
+  body{
+    font-family: system-ui,-apple-system,"Segoe UI",sans-serif;
+    margin:0; background:var(--bg);
+  }
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:var(--bg);
+    border-bottom:1px solid #ddd;
+    padding:12px 12px 10px;
+  }
+  .toprow{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+  }
+  .brand{ font-weight:900; font-size:16px; }
+  .date{ color:var(--muted); font-size:12px; }
+
+  .card{
+    margin-top:10px;
+    border:1px solid #ddd;
+    border-radius: var(--radius);
+    padding:12px;
+    background: #fff;
+  }
+  label{ display:block; font-size:12px; color:var(--muted); margin:8px 0 6px; }
+  input[type="text"], select{
+    width:100%;
+    padding:12px 12px;
+    border:1px solid var(--bd);
+    border-radius: var(--radius);
+    font-size:16px; /* iOSズーム防止 */
+    box-sizing:border-box;
+    background:#fff;
+  }
+  .inline{
+    display:flex; gap:10px; align-items:center;
+  }
+  .inline .floor{ width:38%; min-width:120px; }
+  .inline .detail{ flex:1; }
+
+  .sectionTitle{
+    font-weight:900;
+    font-size:16px;
+    margin:10px 0 0;
+  }
+  .hint{ color:var(--muted); font-size:12px; margin:6px 0 0; }
+
+  .controls{
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    margin-top:10px;
+  }
+  button{
+    padding:12px 12px;
+    border:1px solid var(--bd);
+    border-radius: var(--radius);
+    background:#fff;
+    font-size:14px;
+    cursor:pointer;
+  }
+  button:active{ transform: translateY(1px); }
+
+  /* 入力リスト（径を1つ選んで縦に入力） */
+  .list{
+    margin-top:10px;
+    border:1px solid #ddd;
+    border-radius: var(--radius);
+    overflow:hidden;
+    background:#fff;
+  }
+  .row{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px;
+    border-top:1px solid #eee;
+  }
+  .row:first-child{ border-top:none; }
+  .len{
+    width:92px; flex:0 0 auto;
+    font-weight:800;
+  }
+  .qty{
+    flex:1;
+    display:flex; align-items:center; gap:10px;
+  }
+  input[type="number"]{
+    width:120px;
+    padding:12px 10px;
+    border:1px solid var(--bd);
+    border-radius: var(--radius);
+    font-size:18px; /* 押しやすい */
+    text-align:center;
+    box-sizing:border-box;
+  }
+  .kg{
+    width:92px; flex:0 0 auto;
+    text-align:right;
+    font-variant-numeric: tabular-nums;
+    font-weight:800;
+  }
+  .muted{ color:var(--muted); font-size:12px; }
+
+  .summary{
+    margin-top:10px;
+    border:1px solid #ddd;
+    border-radius: var(--radius);
+    padding:12px;
+    background: var(--card);
+  }
+  .summaryRow{
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding:6px 0;
+  }
+  .summaryRow strong{ font-size:16px; }
+  .summaryRow span{ font-variant-numeric: tabular-nums; font-weight:900; }
+
+  /* 径別合計（折りたたみ） */
+  details{
+    margin-top:10px;
+    border:1px solid #ddd;
+    border-radius: var(--radius);
+    padding:10px 12px;
+    background:#fff;
+  }
+  details summary{
+    font-weight:900;
+    cursor:pointer;
+  }
+  .diaGrid{
+    margin-top:10px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:8px 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip{
+    border:1px solid #ddd;
+    border-radius: 12px;
+    padding:10px 10px;
+    background:#fff;
+    display:flex; justify-content:space-between; gap:10px;
+    font-weight:800;
+  }
+  .chip small{ color:var(--muted); font-weight:700; }
+
+  @media print{
+    .controls, .hint, details{ display:none; }
+    body{ background:#fff; }
+    .topbar{ position:static; border:none; }
+  }
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+  <div class="toprow">
+    <div class="brand">鵜飼鉄筋工業</div>
+    <div id="today" class="date"></div>
+  </div>
+
+  <div class="card">
+    <label for="work">工事名</label>
+    <input id="work" type="text" placeholder="例：牧志テナントビル １壁" autocomplete="off">
+
+    <label for="prime">元請名</label>
+    <input id="prime" type="text" placeholder="例：〇〇建設株式会社" autocomplete="off">
+
+    <label>積算内訳（階数 + 内訳）</label>
+    <div class="inline">
+      <select id="floor" class="floor" aria-label="階数">
+        <option value="1F">1F</option><option value="2F">2F</option><option value="3F">3F</option>
+        <option value="4F">4F</option><option value="5F">5F</option><option value="6F">6F</option>
+        <option value="7F">7F</option><option value="8F">8F</option><option value="9F">9F</option>
+        <option value="10F">10F</option><option value="B1F">B1F</option><option value="B2F">B2F</option>
+        <option value="RF">RF</option><option value="PH">PH</option>
+      </select>
+      <input id="detail" class="detail" type="text" placeholder="例：柱・梁・壁など" autocomplete="off">
+    </div>
+
+    <div class="controls">
+      <button id="btnClear" type="button">本数クリア</button>
+      <button id="btnPrint" type="button">印刷（PDF保存）</button>
+    </div>
+  </div>
+
+  <div class="sectionTitle">重量計算</div>
+  <div class="hint">スマホでは「径を選ぶ → 縦に本数入力」が最速です。</div>
+
+  <div class="card" style="margin-top:10px;">
+    <label for="dia">径（入力する列）</label>
+    <select id="dia"></select>
+    <div class="muted" id="kgpm"></div>
+  </div>
+</div>
+
+<div style="padding: 0 12px 18px;">
+  <div class="list" id="list"></div>
+
+  <div class="summary">
+    <div class="summaryRow">
+      <strong id="thisDiaLabel">この径の重量</strong>
+      <span id="thisDiaKg">0.000</span><span> kg</span>
+    </div>
+    <div class="summaryRow" style="border-top:1px solid #ddd; margin-top:6px; padding-top:10px;">
+      <strong>総重量</strong>
+      <span id="grandKg">0.000</span><span> kg</span>
+    </div>
+  </div>
+
+  <details>
+    <summary>径別 合計（kg）</summary>
+    <div class="diaGrid" id="diaGrid"></div>
+  </details>
+</div>
+
+<script>
+  // 今日の日付（端末ローカル）
+  (function setToday(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    document.getElementById("today").textContent = `${yyyy}/${mm}/${dd}`;
+  })();
+
+  // JIS（一般に使われる単位質量 kg/m）
+  const KG_PER_M = { D10:0.560, D13:0.995, D16:1.560, D19:2.250, D22:3.040, D25:3.980, D29:5.040, D32:6.310 };
+  const DIAS = Object.keys(KG_PER_M);
+
+  // 長さ（m）→ 表示はmm
+  const LENGTHS_M = Array.from({length: ((12.0 - 3.5)/0.5)+1}, (_,i)=>+(3.5+0.5*i).toFixed(1));
+
+  // データ保持：qty[len_m][dia] を持つ（マトリクスの中身は維持）
+  const qty = {};
+  for(const m of LENGTHS_M){
+    qty[m] = {};
+    for(const d of DIAS) qty[m][d] = 0;
+  }
+
+  const diaSel = document.getElementById("dia");
+  const listEl = document.getElementById("list");
+  const kgpmEl = document.getElementById("kgpm");
+  const thisDiaLabelEl = document.getElementById("thisDiaLabel");
+  const thisDiaKgEl = document.getElementById("thisDiaKg");
+  const grandKgEl = document.getElementById("grandKg");
+  const diaGridEl = document.getElementById("diaGrid");
+
+  function fmt3(n){ return (Math.round(n*1000)/1000).toFixed(3); }
+  function mmLabel(m){ return `${Math.round(m*1000)}mm`; }
+
+  // 径セレクト初期化
+  diaSel.innerHTML = DIAS.map(d=>`<option value="${d}">${d}</option>`).join("");
+  diaSel.value = "D13";
+
+  function renderList(){
+    const d = diaSel.value;
+    kgpmEl.textContent = `単位質量：${KG_PER_M[d]} kg/m`;
+    thisDiaLabelEl.textContent = `この径の重量（${d}）`;
+
+    listEl.innerHTML = `
+      <div class="row" style="background:#fafafa; font-weight:900;">
+        <div class="len">材長</div>
+        <div class="qty" style="justify-content:center;">本数</div>
+        <div class="kg">重量</div>
+      </div>
+      ${LENGTHS_M.map(m=>{
+        const v = qty[m][d] || 0;
+        return `
+          <div class="row">
+            <div class="len">${mmLabel(m)}</div>
+            <div class="qty">
+              <input class="inp" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1"
+                     data-l="${m}" value="${v ? v : ""}" placeholder="0">
+            </div>
+            <div class="kg" data-kg="${m}">0.000</div>
+          </div>
+        `;
+      }).join("")}
+    `;
+
+    // その径の行重量を反映
+    updateRowKgs(d);
+    updateTotals();
+  }
+
+  function updateRowKgs(d){
+    LENGTHS_M.forEach(m=>{
+      const q = qty[m][d] || 0;
+      const kg = KG_PER_M[d] * m * q;
+      const cell = listEl.querySelector(`.kg[data-kg="${m}"]`);
+      if(cell) cell.textContent = fmt3(kg);
+    });
+  }
+
+  function updateTotals(){
+    // 径別合計
+    const sumByDia = {};
+    for(const d of DIAS) sumByDia[d] = 0;
+
+    for(const m of LENGTHS_M){
+      for(const d of DIAS){
+        const q = qty[m][d] || 0;
+        if(!q) continue;
+        sumByDia[d] += KG_PER_M[d] * m * q;
+      }
+    }
+
+    // この径
+    const dNow = diaSel.value;
+    const thisDiaKg = sumByDia[dNow];
+
+    // 総重量
+    const grand = DIAS.reduce((acc,d)=>acc+sumByDia[d],0);
+
+    thisDiaKgEl.textContent = fmt3(thisDiaKg);
+    grandKgEl.textContent = fmt3(grand);
+
+    // 径別一覧
+    diaGridEl.innerHTML = DIAS.map(d=>`
+      <div class="chip">
+        <div>${d}<br><small>${KG_PER_M[d]}kg/m</small></div>
+        <div>${fmt3(sumByDia[d])}kg</div>
+      </div>
+    `).join("");
+  }
+
+  // 入力イベント：表示中の径だけ反映（でも内部はマトリクス保持）
+  listEl.addEventListener("input", (e)=>{
+    const inp = e.target.closest(".inp");
+    if(!inp) return;
+    const d = diaSel.value;
+    const m = inp.dataset.l;
+    const v = parseInt(inp.value || "0", 10) || 0;
+    qty[m][d] = v;
+    updateRowKgs(d);
+    updateTotals();
+  });
+
+  diaSel.addEventListener("change", ()=>{
+    renderList();
+  });
+
+  // クリア（本数のみ）
+  document.getElementById("btnClear").addEventListener("click", ()=>{
+    if(!confirm("本数を全部クリアしますか？")) return;
+    for(const m of LENGTHS_M){
+      for(const d of DIAS) qty[m][d] = 0;
+    }
+    renderList();
+  });
+
+  document.getElementById("btnPrint").addEventListener("click", ()=>window.print());
+
+  // 初期描画
+  renderList();
+</script>
+</body>
+</html>
